@@ -1,6 +1,5 @@
 import torch
 import numpy as np
-# Define device as the device that PyTorch will use
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 Tensor1 = 50 * torch.rand((100,1),dtype=torch.float32)
