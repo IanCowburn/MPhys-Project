@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
+from mpl_toolkits import mplot3d
 from torch import nn, optim
 
 input_penguins_df = pd.read_csv('Exercises/penguins.csv')
@@ -8,7 +9,10 @@ penguins_df = input_penguins_df.dropna(inplace=False)
 
 input_data1 = torch.tensor(penguins_df["flipper_length_mm"].values, dtype=torch.float32).reshape(-1,1)
 input_data2 = torch.tensor(penguins_df["bill_length_mm"].values,    dtype=torch.float32).reshape(-1,1)
-target     = torch.tensor(penguins_df["body_mass_g"].values,       dtype=torch.float32).reshape(-1,1)
+
+input_data2D = torch.tensor(penguins_df[["flipper_length_mm", "bill_length_mm"]].values, dtype=torch.float32)
+
+target     = torch.tensor(penguins_df["body_mass_g"].values, dtype=torch.float32).reshape(-1,1)
 
 model = nn.Linear(2, 1)
 
@@ -21,14 +25,17 @@ optimizer = optim.Rprop(model.parameters())
 # keep track of the loss every epoch. This is only for visualisation
 losses = []
 
-N_epochs = 1000
+N_epochs = 5000
 
 for epoch in range(N_epochs):
     # tell the optimizer to begin an optimization step
     optimizer.zero_grad()
 
     # use the model as a prediction function: features → prediction
-    predictions = model(torch.cat((input_data1, input_data2), dim=1))
+    predictions = model(input_data2D)
+
+    if epoch == 1000:
+        print(predictions)
 
     # compute the loss (χ²) between these predictions and the intended targets
     loss = loss_function(predictions, target)
@@ -39,23 +46,8 @@ for epoch in range(N_epochs):
 
     losses.append(loss.item())
 
-    # Print the loss every 10 epochs
-    if (epoch + 1) % 10 == 0:
-        print(f'Epoch [{epoch + 1}/{N_epochs}], Loss: {loss.item():.4f}')
-
-y_out = model(torch.cat((input_data1, input_data2), dim=1))
+y_out = model(input_data2D)
 y_pred = y_out.detach()
-
-
-# Plot the original data and the linear regression line
-plt.scatter(input_data1, target, color='blue', label='Data Points')
-plt.scatter(input_data1, y_pred, color='red', label='Linear Regression Line')
-plt.scatter(input_data2, y_pred, color='green', label='Linear Regression Line 2')
-plt.xlabel('Input')
-plt.ylabel('Target')
-plt.title('Linear Regression Example')
-plt.legend()
-plt.show()
 
 def r_squared(y_true, y_pred):
     ss_res = torch.sum((y_true - y_pred) ** 2)
@@ -64,3 +56,14 @@ def r_squared(y_true, y_pred):
 
 r_squared_value = r_squared(target, y_pred)
 print(r_squared_value.item())
+
+ax = plt.axes(projection='3d')
+
+ax.scatter3D(input_data2D[:,0].reshape(-1,1), input_data2D[:,1].reshape(-1,1), target.reshape(-1,1), color='blue', label='Data Points')
+ax.scatter3D(input_data2D[:,0].reshape(-1,1), input_data2D[:,1].reshape(-1,1), y_pred, color='red', label='Linear Regression Plane')
+ax.set_xlabel('Flipper Length (mm)')
+ax.set_ylabel('Bill Length (mm)')
+ax.set_zlabel('Body Mass (g)')
+ax.set_title('3D Linear Regression Example')
+plt.legend()
+plt.show()
