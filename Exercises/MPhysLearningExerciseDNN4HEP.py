@@ -74,13 +74,16 @@ y_test  = torch.tensor(y_test, dtype=torch.float32).reshape(-1, 1)
 model = nn.Sequential(
     nn.Linear(len(input_features), 100),
     nn.Sigmoid(),
+    nn.Dropout(0.2),
     nn.Linear(100, 50),
     nn.Sigmoid(),
+    nn.Dropout(0.2),
     nn.Linear(50, 1),
     nn.Sigmoid())
 
 loss_fn = nn.BCELoss()   
 optimizer = torch.optim.SGD(model.parameters(), lr=0.005, momentum=0.9)
+scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
 
 train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
 val_loader = DataLoader(TensorDataset(X_val, y_val), batch_size=32, shuffle=False)
@@ -88,6 +91,25 @@ val_loader = DataLoader(TensorDataset(X_val, y_val), batch_size=32, shuffle=Fals
 train_losses = []
 val_losses = []
 num_epochs = 50
+
+class Early_Stopping:
+    def __init__(self, patience=10, min_delta=0):
+        self.patience = patience        # How many epochs to wait
+        self.min_delta = min_delta      # Minimum improvement to count
+        self.counter = 0
+        self.best_loss = float('inf')
+        self.early_stop = False
+
+    def __call__(self, val_loss):
+        if self.best_loss - val_loss > self.min_delta:
+            self.best_loss = val_loss
+            self.counter = 0  # Reset counter if improvement
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+
+early_stopping = Early_Stopping(patience=10, min_delta=0.001)
 
 for epoch in range(num_epochs):
     model.train()
@@ -119,6 +141,13 @@ for epoch in range(num_epochs):
     val_losses.append(val_loss)
 
     print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+
+    early_stopping(val_loss)
+    if early_stopping.early_stop:
+        print("Early stopping triggered.")
+        break
+
+    scheduler.step()
 
 model.eval()  
 with torch.no_grad():
