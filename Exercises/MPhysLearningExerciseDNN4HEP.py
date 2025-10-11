@@ -194,12 +194,50 @@ plt.figure(figsize=(8, 6))
 plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
 plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')  # Random classifier line
 plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
+plt.ylim([0.0, 1.0])
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
 plt.title('Receiver Operating Characteristic (ROC) Curve')
 plt.legend(loc='lower right')
 plt.show()
+
+def permutation_importance(model, X_val, y_val):
+
+    detatch_to_binary = lambda x: np.round(model(x).detach().numpy())
+
+    baseline_preds = detatch_to_binary(X_val)
+    baseline_accuracy = accuracy_score(y_val, baseline_preds)
+
+    importances = {}
+    
+    for i in range(X_val.shape[1]):
+        X_val_permuted = X_val.clone()
+        permuted_column = X_val_permuted[:, i][torch.randperm(X_val_permuted.size(0))]
+        X_val_permuted[:, i] = permuted_column
+        
+        permuted_preds = detatch_to_binary(X_val_permuted)
+        permuted_accuracy = accuracy_score(y_val, permuted_preds)
+        
+        importances[input_features[i]] = baseline_accuracy - permuted_accuracy
+
+    return importances
+
+importances = permutation_importance(model, X_val, y_val)
+sorted_importances = dict(sorted(importances.items(), key=lambda item: item[1], reverse=True))
+print("Feature importances (from highest to lowest):")
+for feature, importance in sorted_importances.items():
+    print(f"{feature}: {importance}")
+
+plt.figure(figsize=(10, 6))
+plt.bar(sorted_importances.keys(), sorted_importances.values())
+plt.xlabel('Features')
+plt.ylabel('Importance')
+plt.title('Feature Importances via Permutation Importance')
+plt.xticks(rotation=45)
+plt.show()
+
+
+
 
 
 def reset_weights(m):
