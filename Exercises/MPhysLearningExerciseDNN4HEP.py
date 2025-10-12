@@ -233,12 +233,7 @@ plt.bar(sorted_importances.keys(), sorted_importances.values())
 plt.xlabel('Features')
 plt.ylabel('Importance')
 plt.title('Feature Importances via Permutation Importance')
-plt.xticks(rotation=45)
 plt.show()
-
-
-
-
 
 def reset_weights(m):
     if hasattr(m, 'reset_parameters'):
