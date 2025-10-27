@@ -190,10 +190,18 @@ plt.title('DNN Regression for Parton System Mass')
 plt.savefig("MPhys4TopDNN_PartonMassRegression.png", dpi=600)
 plt.show()
 
+plt.hist(dist, bins=100, range=[0, 1e6])
+plt.xlabel('Absolute Error [MeV]')
+plt.ylabel('Event Density')
+plt.title('DNN Regression Absolute Error')
+plt.savefig("MPhys4TopDNN_PartonMassRegression_Error.png", dpi=600)
+plt.show()
+
 def reset_weights(m):
     if hasattr(m, 'reset_parameters'):
         m.reset_parameters()
 model.apply(reset_weights)
 
-
+RMS = np.sqrt(np.mean(dist**2))
+print(f"Root Mean Square Error (RMSE): {RMS} MeV")
 
