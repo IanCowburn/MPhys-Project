@@ -118,10 +118,17 @@ class TransformerRegressor(nn.Module):
         self.embedder = Embedder(input_dim, embed_dim)
         self.transformer = TransformerEncoder(embed_dim, n_heads, num_layers)
         self.regressor = nn.Linear(embed_dim, 1)
-    def forward(self, x):
+        self.last_embedder_output = None  # Store embedder output for diagnostics
+        
+    def forward(self, x, store_embedder_output=False):
         src_key_padding_mask = (x == -99.0).all(dim=-1)
-        x = self.embedder(x, src_key_padding_mask=src_key_padding_mask)
-        x = self.transformer(x, mask=src_key_padding_mask)
+        embedded = self.embedder(x, src_key_padding_mask=src_key_padding_mask)
+        
+        # Store embedder output if requested
+        if store_embedder_output:
+            self.last_embedder_output = embedded.detach()
+        
+        x = self.transformer(embedded, mask=src_key_padding_mask)
         # Take mean over sequence (tokens) dimension for regression
         x = x.mean(dim=1)
         out = self.regressor(x)
@@ -231,13 +238,32 @@ for epoch in range(epochs):
 # --- Prediction ---
 model.eval()
 with torch.no_grad():
-    X_test_seq = X_test.unsqueeze(1)  # (batch, seq_len=1, features)
-    y_pred_scaled = model(X_test_seq).cpu().numpy()
+    # X_test is already (batch, seq_len, features), no need to unsqueeze
+    # Enable embedder output capture
+    y_pred_scaled = model(X_test, store_embedder_output=True).cpu().numpy()
     y_true_scaled = y_test.cpu().numpy()
+    
+    # Extract embedder outputs for histogram
+    embedder_output = model.last_embedder_output.cpu().numpy()
 
 # Inverse transform to get physical invariant mass values
 y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
 y_true = scaler_y.inverse_transform(y_true_scaled.reshape(-1, 1)).flatten()
+
+# --- Embedder Output Distribution Histogram ---
+plt.figure(figsize=(10, 6))
+# Flatten all embedder outputs across batch, sequence, and embedding dimensions
+embedder_flat = embedder_output.flatten()
+plt.hist(embedder_flat, bins=100, alpha=0.7, edgecolor='black')
+plt.xlabel('Embedder Output Value')
+plt.ylabel('Frequency')
+plt.title('Distribution of Embedder Outputs (Before Final Linear Layer)')
+plt.grid(True, alpha=0.3)
+plt.savefig('embedder_output_distribution.png', dpi=300)
+plt.show()
+
+print(f"Embedder output stats: mean={embedder_flat.mean():.4f}, std={embedder_flat.std():.4f}, "
+      f"min={embedder_flat.min():.4f}, max={embedder_flat.max():.4f}")
 
 # --- 2D Histogram Plot ---
 plt.figure(figsize=(8,6))
