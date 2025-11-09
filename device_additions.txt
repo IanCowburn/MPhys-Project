@@ -1,0 +1,49 @@
+# Add this after the train/test split and before model creation:
+
+# --- Device Setup ---
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+
+# --- Model, Loss, Optimizer ---
+input_dim = X_train.shape[1]
+embed_dim = 64
+n_heads = 4
+num_layers = 3
+model = TransformerRegressor(input_dim, embed_dim, n_heads, num_layers)
+model = model.to(device)  # Move model to GPU
+loss_fn = nn.MSELoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+# Move data to device
+X_train = X_train.to(device)
+y_train = y_train.to(device)
+X_test = X_test.to(device)
+y_test = y_test.to(device)
+
+# --- Training Loop ---
+epochs = 50
+batch_size = 128
+for epoch in range(epochs):
+    model.train()
+    perm = torch.randperm(X_train.size(0))
+    train_loss = 0.0
+    for i in range(0, X_train.size(0), batch_size):
+        idx = perm[i:i+batch_size]
+        xb = X_train[idx]  # shape: (batch_size, features) - already on device
+        xb = xb.unsqueeze(1)  # shape: (batch_size, seq_len=1, features)
+        yb = y_train[idx]  # already on device
+        pred = model(xb)
+        loss = loss_fn(pred, yb)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.item() * xb.size(0)
+    train_loss /= X_train.size(0)
+    print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}")
+
+# --- Prediction ---
+model.eval()
+with torch.no_grad():
+    X_test_seq = X_test.unsqueeze(1)  # (batch, seq_len=1, features) - already on device
+    y_pred_scaled = model(X_test_seq).cpu().numpy()  # Move to CPU for numpy
+    y_true_scaled = y_test.cpu().numpy()  # Move to CPU for numpy
