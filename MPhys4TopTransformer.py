@@ -98,12 +98,10 @@ class Embedder(nn.Module):
         super().__init__()
         self.linear = nn.Linear(in_features, d_model)
     def forward(self, x, src_key_padding_mask):
-        # 1. Apply linear transformation to upscale input features. 
         # x shape: (batch, tokens, features)
         embedded_x = self.linear(x)
-        # 2. Use the mask to zero out the embedded vectors for padded tokens.
         mask = src_key_padding_mask.unsqueeze(-1)
-        # x shape: (batch, tokens, d_model) with padded tokens set to zero
+        # x shape: (batch, tokens, d_model)
         embedded_x = embedded_x.masked_fill(mask, 0.0)
         return embedded_x
     
@@ -118,18 +116,17 @@ class TransformerRegressor(nn.Module):
         self.embedder = Embedder(input_dim, embed_dim)
         self.transformer = TransformerEncoder(embed_dim, n_heads, num_layers)
         self.regressor = nn.Linear(embed_dim, 1)
-        self.last_embedder_output = None  # Store embedder output for diagnostics
+        self.last_embedder_output = None
         
     def forward(self, x, store_embedder_output=False):
         src_key_padding_mask = (x == -99.0).all(dim=-1)
         embedded = self.embedder(x, src_key_padding_mask=src_key_padding_mask)
         
-        # Store embedder output if requested
         if store_embedder_output:
             self.last_embedder_output = embedded.detach()
         
         x = self.transformer(embedded, mask=src_key_padding_mask)
-        # Take mean over sequence (tokens) dimension for regression
+
         x = x.mean(dim=1)
         out = self.regressor(x)
         return out.squeeze(-1)
@@ -151,15 +148,11 @@ class EarlyStopping:
             if self.counter >= self.patience:
                 self.early_stop = True
 
-# --- Data Preparation ---
-# Features: data_array (already numpy)
-# Target: invariant mass from combined_parton_system
 X = data_array.astype(np.float32)
 y = ak.to_numpy(combined_parton_system.mass).astype(np.float32)
 print(f"X shape before mask: {X.shape}")
 print(f"y shape before mask: {y.shape}")
 
-# Remove any rows with -99 padding in all features (optional, for clean training)
 valid_mask = ~(X == -99.0).all(axis=(1, 2))
 print(f"valid_mask shape: {valid_mask.shape}, keeping {valid_mask.sum()} samples")
 
@@ -169,8 +162,6 @@ y = y[valid_mask]
 print(f"X shape after mask: {X.shape}")
 print(f"y shape after mask: {y.shape}")
 
-
-# Standardize features
 scaler_X = StandardScaler()
 E, F, T = X.shape
 print(E, F, T)
@@ -184,18 +175,14 @@ X_scaled = np.transpose(X_scaled, (0, 2, 1))
 print(X_scaled.shape)
 
 
-# Standardize target
 scaler_y = StandardScaler()
 y_scaled = scaler_y.fit_transform(y.reshape(-1, 1)).flatten()
 
-# Convert to torch tensors
 X_tensor = torch.from_numpy(X_scaled)
 y_tensor = torch.from_numpy(y_scaled)
 
-# --- Train/Test Split ---
 X_train, X_test, y_train, y_test = train_test_split(X_tensor, y_tensor, test_size=0.2, random_state=42)
 
-# --- Device Setup ---
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
@@ -209,7 +196,6 @@ model = model.to(device)
 loss_fn = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-# Move data to device
 X_train = X_train.to(device)
 y_train = y_train.to(device)
 X_test = X_test.to(device)
@@ -238,8 +224,6 @@ for epoch in range(epochs):
 # --- Prediction ---
 model.eval()
 with torch.no_grad():
-    # X_test is already (batch, seq_len, features), no need to unsqueeze
-    # Enable embedder output capture
     y_pred_scaled = model(X_test, store_embedder_output=True).cpu().numpy()
     y_true_scaled = y_test.cpu().numpy()
     
@@ -250,9 +234,7 @@ with torch.no_grad():
 y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
 y_true = scaler_y.inverse_transform(y_true_scaled.reshape(-1, 1)).flatten()
 
-# --- Embedder Output Distribution Histogram ---
 plt.figure(figsize=(10, 6))
-# Flatten all embedder outputs across batch, sequence, and embedding dimensions
 embedder_flat = embedder_output.flatten()
 plt.hist(embedder_flat, bins=100, alpha=0.7, edgecolor='black')
 plt.xlabel('Embedder Output Value')
@@ -265,7 +247,6 @@ plt.show()
 print(f"Embedder output stats: mean={embedder_flat.mean():.4f}, std={embedder_flat.std():.4f}, "
       f"min={embedder_flat.min():.4f}, max={embedder_flat.max():.4f}")
 
-# --- 2D Histogram Plot ---
 plt.figure(figsize=(8,6))
 plt.hist2d(y_true, y_pred, bins=250, range=[[0, 6e6], [0, 6e6]], cmap='viridis', cmin=1)
 plt.xlabel('Expected Invariant Mass')
