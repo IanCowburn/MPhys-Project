@@ -1,24 +1,35 @@
-
 # Imports
 import uproot
 import awkward as ak
 import vector
 import numpy as np
 import os
+
 # Data files
 files = ["tttt_NLO_523243_mc23a_fullsim.root",
          "tttt_NLO_523243_mc23d_fullsim.root",
          "tttt_NLO_523243_mc23e_fullsim.root"]
-var_names = ["lepton_eta", "lepton_phi", "jet_eta", "jet_phi", "lepton_pt_NOSYS", "jet_pt_NOSYS", "lepton_e_NOSYS", "jet_e_NOSYS", "jet_GN2v01_FixedCutBEff_77_select", "lepton_charge"]
+
+# Relevant variable names
+var_names = ["lepton_eta", "lepton_phi", "jet_eta", "jet_phi", "lepton_pt_NOSYS",
+             "jet_pt_NOSYS", "lepton_e_NOSYS", "jet_e_NOSYS",
+             "jet_GN2v01_FixedCutBEff_77_select", "lepton_charge"]
+
+
 class TransformerDataLoader:
+    """
+    Data Loader Class to load and preprocess data from ROOT files.
+    """
     def __init__(self, files, var_names, lepton_mask_size, jet_mask_size):
         """
         Initialises the data loader with file paths, variable names, and mask sizes.
+
         Args:
             files (list): List of ROOT file paths.
             var_names (list): List of variable names to extract from the ROOT files.
             lepton_mask_size (int): Maximum number of leptons allowed per event.
             jet_mask_size (int): Maximum number of jets allowed per event.
+
         Returns:
             None
         """
@@ -27,14 +38,16 @@ class TransformerDataLoader:
         self.var_names = var_names
         self.lepton_mask_size = lepton_mask_size
         self.jet_mask_size = jet_mask_size
+        
     def data_loading(self, filenames):
         """
         Initially opens the root file and extracts the reco tree. Creates parton 4-momentum vector from
         the tree branches. Then extracts the relevant variable name branches from the tree into the
         main data array.
+
         Args:
-            self
             filenames (str): Path to the ROOT file.
+
         Returns:
             tuple:
                 data_array (awkward.Array): Main data array with variable branches.
@@ -58,26 +71,31 @@ class TransformerDataLoader:
         """
         Takes in the data array, the parton vectors, and the tree from the ROOT file. Also takes in the
         lepton and jet mask sizes to filter out events with too many leptons or jets.
+
         Creates masking arrays for the leptons and jets based on their counts in each event. The main
         data array and parton vectors are then filtered using these masks to only include events that
         meet the jet and lepton masks.
+
         The combined parton system is created here after padding.
+
         The first for loop determines the padding sizes for each variable in var_names by finding the maximum
         number of entries across all events. This is stored in the padding_size list for each variable.
+
         The second for loop applies padding to each variable in var_names using the previously determined
         padding sizes. It uses ak.pad_none to pad the arrays to the specified size, and then fills any
         missing values with -99 using ak.fill_none.
+
         Args:
             data_array (awkward.Array): Input data array with variable branches.
             parton_vectors (vector.Array): Parton-level 4-momentum vectors.
             tree (uproot.Tree): The ROOT tree containing the reco data.
-            lepton_mask_size (int): Maximum number of leptons allowed per event.
-            jet_mask_size (int): Maximum number of jets allowed per event.
-            var_names (list): List of variable names to process.
+            parton_pt (awkward.Array): Parton-level jet pt values.
+
         Returns:
             tuple:
                 data_array (awkward.Array): Padded and filtered data array.
                 combined_parton_system (vector.Array): Combined parton system from the 4-momenta.
+                parton_ht (awkward.Array): HT of the parton-level jets.
         """
             
         padding_size = []
@@ -106,17 +124,24 @@ class TransformerDataLoader:
     def data_combination(self, data_array, combined_parton_system, parton_ht):
         """
         Creates the final data array by concatenating lepton and jet arrays along the feature axis.
+
         It first separates the lepton and jet related arrays from the main data array based on the variable names.
+
         Then, it converts these awkward arrays to numpy arrays for easier manipulation.
+
         Finally, it concatenates the lepton and jet arrays along the feature axis and transposes the resulting array
         to have the shape (events, tokens, features).
+
         Args:
             data_array (awkward.Array): Input data array with variable branches.
             combined_parton_system (vector.Array): Combined parton system from the 4-momenta.
+            parton_ht (awkward.Array): HT of the parton-level jets.
+
         Returns:
             tuple:
                 data_array (numpy.ndarray): Final combined data array with shape (events, tokens, features).
                 combined_parton_system (vector.Array): Combined parton system from the 4-momenta.
+                parton_ht (awkward.Array): HT of the parton-level jets.
         """
         lepton_arrays = []
         jet_arrays = []
@@ -130,9 +155,9 @@ class TransformerDataLoader:
         
         # Concatenate features along token axis: (features, events, total_tokens)
         data_array = np.concatenate([lepton_arrays[:4, :, :], jet_arrays[:4, :, :]], axis=2) # Shape: (4, events, total_tokens)
-        charge_zeros = -99 * np.ones([data_array.shape[1], self.jet_mask_size])  # Shape: (events, jet_tokens)
+        charge_zeros = np.zeros([data_array.shape[1], self.jet_mask_size])  # Shape: (events, jet_tokens)
         charge_leptons = np.concatenate([lepton_arrays[4, :, :], charge_zeros], axis=1)  # Shape: (events, total_tokens)
-        bjet_zeros = -99 * np.ones([data_array.shape[1], self.lepton_mask_size])  # Shape: (events, lepton_tokens)
+        bjet_zeros = np.zeros([data_array.shape[1], self.lepton_mask_size])  # Shape: (events, lepton_tokens)
         bjet_tags = np.concatenate([bjet_zeros, jet_arrays[4, :, :]], axis=1)  # Shape: (events, total_tokens)
         data_array = np.concatenate([data_array, charge_leptons[np.newaxis, :, :], bjet_tags[np.newaxis, :, :]], axis=0)  # Shape: (6, events, total_tokens)
         
@@ -140,41 +165,47 @@ class TransformerDataLoader:
         data_array = np.transpose(data_array, (1, 2, 0))
         return data_array, combined_parton_system, parton_ht
     
-    def lepton_jet_classifier(self, x):
-        """
-        Creates a classifier array to distinguish between leptons and jets in the data array.
-        Args:
-            x (numpy.ndarray): Input data array with shape (events, tokens, features).
+    # def lepton_jet_classifier(self, x):
+    #     """
+    #     Creates a classifier array to distinguish between leptons and jets in the data array.
+    #     Args:
+    #         x (numpy.ndarray): Input data array with shape (events, tokens, features).
         
-        Returns:
-            classifier_array (numpy.ndarray): Classifier array with shape (events, tokens),
-            where leptons are labeled as 1 and jets as 2.
-        """
-        events_length = x.shape[0]
-        lepton_classifier_array = np.ones((events_length, self.lepton_mask_size), dtype=np.float32)
-        jet_classifier_array = 2 * np.ones((events_length, self.jet_mask_size), dtype=np.float32)
-        classifer_array = np.concatenate((lepton_classifier_array, jet_classifier_array), axis=1)
-        return classifer_array
+    #     Returns:
+    #         classifier_array (numpy.ndarray): Classifier array with shape (events, tokens),
+    #         where leptons are labeled as 1 and jets as 2.
+    #     """
+    #     events_length = x.shape[0]
+    #     lepton_classifier_array = np.ones((events_length, self.lepton_mask_size), dtype=np.float32)
+    #     jet_classifier_array = 2 * np.ones((events_length, self.jet_mask_size), dtype=np.float32)
+    #     classifer_array = np.concatenate((lepton_classifier_array, jet_classifier_array), axis=1)
+    #     return classifer_array
     
     def final_masking(self, data_array, combined_parton_system, parton_ht, num_phys_features=6):
         """
         Create padding mask for data_array and filter out fully padded events.
+
         Uses all `num_phys_features` channels to detect padding.
+
         Initially creates a boolean mask `pad_mask_np` where each entry is True if all the first
         `num_phys_features` features of a token are -99.0 (indicating padding).
+
         Then, it creates a `valid_mask` to identify events that are not fully padded (i.e., events
         that have at least one token with valid data).
+
         Finally, it filters the data_array, combined_parton_system, and pad_mask_np using the
         valid_mask to retain only the valid events.
+
         Args:
             data_array (numpy.ndarray): Input data array with shape (events, tokens, features).
             combined_parton_system (vector.Array): Combined parton system from the 4-momenta.
+            parton_ht (awkward.Array): HT of the parton-level jets.
             num_phys_features (int): Number of physical features to consider for padding detection.
         
         Returns:
             tuple:
                 X (numpy.ndarray): Filtered data array with shape (valid_events, tokens, features).
-                y (numpy.ndarray): Corresponding target values with shape (valid_events,).
+                y (numpy.ndarray): Corresponding target values with shape (valid_events, 2).
                 pad_mask_np (numpy.ndarray): Padding mask for the filtered data array with shape (valid_events, tokens).
         """
         X = data_array.astype(np.float32)
@@ -190,11 +221,13 @@ class TransformerDataLoader:
     def __call__(self):
         """
         Main method to load and process data from the ROOT files.
+
         Also saves the files so that it's faster to run next time.
+
         Returns:
             tuple:
                 X (numpy.ndarray): Final processed data array with shape (events, tokens, features).
-                y (numpy.ndarray): Corresponding target values with shape (events,).
+                y (numpy.ndarray): Corresponding target values with shape (events, 2).
                 pad_mask_np (numpy.ndarray): Padding mask for the data array with shape (events, tokens).
         """
         if os.path.exists("dual_cache_X.npy"):
@@ -202,9 +235,11 @@ class TransformerDataLoader:
             y = np.load("dual_cache_y.npy")
             pad_mask_np = np.load("dual_cache_pad_mask.npy")
             return X, y, pad_mask_np
+        
         data_array = []
         combined_parton_system = []
         parton_ht_list = []
+
         for filenames in self.files:
             file_data, parton_vectors, tree, parton_pt = self.data_loading(filenames)
             file_data, file_cps, file_parton_ht = self.initial_masking(file_data, parton_vectors, tree, parton_pt)
@@ -212,14 +247,18 @@ class TransformerDataLoader:
             data_array.append(file_data)
             combined_parton_system.append(file_cps)
             parton_ht_list.append(file_parton_ht)
+
         data_array = np.concatenate(data_array, axis=0)
         combined_parton_system = ak.concatenate(combined_parton_system, axis=0)
         parton_ht = ak.concatenate(parton_ht_list, axis=0)
+
         # classifier_array = self.lepton_jet_classifier(data_array)
         # base_pad_mask = (data_array == -99.0).all(axis=2)
         # classifier_array[base_pad_mask] = -99.0
         # data_array = np.concatenate((data_array, classifier_array[:, :, np.newaxis].astype(np.float32)), axis=2)
+
         X, y, pad_mask_np = self.final_masking(data_array, combined_parton_system, parton_ht, num_phys_features=6)
+
         np.save("dual_cache_X.npy", X)
         np.save("dual_cache_y.npy", y)
         np.save("dual_cache_pad_mask.npy", pad_mask_np)

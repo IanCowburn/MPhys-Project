@@ -1,10 +1,28 @@
-
+# Imports
 import matplotlib.pyplot as plt
 from matplotlib import colors as mcolors
 import numpy as np
 from matplotlib import gridspec
+
 class TransformerPlotting:
+    """
+    Plotting Class for the Transformer Regressor model results.
+    """
     def __init__(self, y_true, y_pred, invariant_mass_corr, invariant_mass_rmse, invariant_mass_difference, ht_corr, ht_rmse, ht_difference, embedder_output):
+        """
+        Initialize the TransformerPlotting class with model results and metrics.
+
+        Args:
+            y_true (np.ndarray): True target values.
+            y_pred (np.ndarray): Predicted target values.
+            invariant_mass_corr (float): Correlation coefficient for invariant mass.
+            invariant_mass_rmse (float): Root mean square error for invariant mass.
+            invariant_mass_difference (np.ndarray): Differences between true and predicted invariant mass.
+            ht_corr (float): Correlation coefficient for HT.
+            ht_rmse (float): Root mean square error for HT.
+            ht_difference (np.ndarray): Differences between true and predicted HT.
+            embedder_output (np.ndarray): Output from the embedder layer.
+        """
         self.invariant_mass_difference = invariant_mass_difference
         self.ht_difference = ht_difference
         self.embedder_output = embedder_output
@@ -14,32 +32,36 @@ class TransformerPlotting:
         self.ht_rmse = ht_rmse
         self.invariant_mass_corr = invariant_mass_corr
         self.ht_corr = ht_corr
+        
     def plot_all(self):
+        """
+        Plot all relevant graphs for the Transformer Regressor model results.
+        """
 
-        #In TeV:
-        self.invariant_mass_difference /= 1e6
-        self.ht_difference /= 1e6
-        self.y_true /= 1e6  
-        self.y_pred /= 1e6
-        self.invariant_mass_rmse /= 1e6
-        self.ht_rmse /= 1e6
+        #In GeV:
+        self.invariant_mass_difference /= 1e3
+        self.ht_difference /= 1e3
+        self.y_true /= 1e3  
+        self.y_pred /= 1e3
+        self.invariant_mass_rmse /= 1e3
+        self.ht_rmse /= 1e3
 
         # Transformer Regression Error Distribution Plot
         plt.figure(figsize=(10, 6))
-        plt.hist(self.invariant_mass_difference, bins=100, range=(-1, 1), alpha=0.7, edgecolor='black')
-        plt.xlabel('Prediction Error [TeV]')
+        plt.hist(self.invariant_mass_difference, bins=100, range=(-1e3, 1e3), alpha=0.7, edgecolor='black')
+        plt.xlabel('Prediction Error [GeV]')
         plt.ylabel('Frequency')
-        plt.title(f'Prediction Error Distribution (RMSE: {self.invariant_mass_rmse:.2f} TeV)')
+        plt.title(f'Prediction Error Distribution (RMSE: {self.invariant_mass_rmse:.2f} GeV)')
         plt.grid(True, alpha=0.3)
         plt.savefig('transformer_dual_regression_invariant_mass_error_distribution.png', dpi=300)
         plt.show()
         plt.close()
         # Transformer Regression Error Distribution Plot
         plt.figure(figsize=(10, 6))
-        plt.hist(self.ht_difference, bins=100, range=(-1, 1), alpha=0.7, edgecolor='black')
-        plt.xlabel('Prediction Error [TeV]')
+        plt.hist(self.ht_difference, bins=100, range=(-1e3, 1e3), alpha=0.7, edgecolor='black')
+        plt.xlabel('Prediction Error [GeV]')
         plt.ylabel('Frequency')
-        plt.title(f'Prediction Error Distribution (RMSE: {self.ht_rmse:.2f} TeV)')
+        plt.title(f'Prediction Error Distribution (RMSE: {self.ht_rmse:.2f} GeV)')
         plt.grid(True, alpha=0.3)
         plt.savefig('transformer_dual_regression_ht_error_distribution.png', dpi=300)
         plt.show()
@@ -65,7 +87,7 @@ class TransformerPlotting:
         ax_ratio = fig.add_subplot(gs[1], sharex=ax_main)
         # Main histograms (use step hist for cleaner look)
         bins = 100
-        x_min, x_max = 0, 6
+        x_min, x_max = 0, 6e3
         ax_main.hist(self.y_true[:,0], bins=bins, range=(x_min, x_max),
                      histtype='step', linewidth=1.5, color='blue', label='True')
         ax_main.hist(self.y_pred[:,0], bins=bins, range=(x_min, x_max),
@@ -83,7 +105,7 @@ class TransformerPlotting:
         ax_ratio.plot(bin_centers, ratio, color='black', linewidth=1.2)
         ax_ratio.axhline(1.0, color='red', linestyle='--', linewidth=1)
         ax_ratio.set_ylabel('Pred/True')
-        ax_ratio.set_xlabel('Invariant Mass [TeV]')
+        ax_ratio.set_xlabel('Invariant Mass [GeV]')
         ax_ratio.set_ylim(0, 2)
         ax_ratio.grid(True, alpha=0.2, axis='y')
         # Hide x tick labels on main plot (shared x)
@@ -98,7 +120,7 @@ class TransformerPlotting:
         ax_ratio = fig.add_subplot(gs[1], sharex=ax_main)
         # Main histograms (use step hist for cleaner look)
         bins = 100
-        x_min, x_max = 0, 4
+        x_min, x_max = 0, 4e3
         ax_main.hist(self.y_true[:,1], bins=bins, range=(x_min, x_max),
                      histtype='step', linewidth=1.5, color='blue', label='True')
         ax_main.hist(self.y_pred[:,1], bins=bins, range=(x_min, x_max),
@@ -116,7 +138,7 @@ class TransformerPlotting:
         ax_ratio.plot(bin_centers, ratio, color='black', linewidth=1.2)
         ax_ratio.axhline(1.0, color='red', linestyle='--', linewidth=1)
         ax_ratio.set_ylabel('Pred/True')
-        ax_ratio.set_xlabel('HT [TeV]')
+        ax_ratio.set_xlabel('HT [GeV]')
         ax_ratio.set_ylim(0, 2)
         ax_ratio.grid(True, alpha=0.2, axis='y')
         # Hide x tick labels on main plot (shared x)
@@ -127,10 +149,10 @@ class TransformerPlotting:
         plt.close()
         # Transformer Regression 2D Histogram Plot
         plt.figure(figsize=(8,6))
-        plt.hist2d(self.y_true[:,0], self.y_pred[:,0], bins=250, range=[[0, 6], [0, 6]], cmap='viridis', cmin=1)
-        plt.plot([0, 6], [0, 6], color='red', linestyle='--', linewidth=1)
-        plt.xlabel('Expected Invariant Mass [TeV]')
-        plt.ylabel('Predicted Invariant Mass [TeV]')
+        plt.hist2d(self.y_true[:,0], self.y_pred[:,0], bins=250, range=[[0, 6e3], [0, 6e3]], cmap='viridis', cmin=1)
+        plt.plot([0, 6e3], [0, 6e3], color='red', linestyle='--', linewidth=1)
+        plt.xlabel('Expected Invariant Mass [GeV]')
+        plt.ylabel('Predicted Invariant Mass [GeV]')
         plt.title('2D Histogram: Expected vs Predicted Invariant Mass')
         plt.colorbar(label='Counts')
         plt.savefig('transformer_dual_regression_invariant_mass_2d_histogram.png', dpi=300)
@@ -138,10 +160,10 @@ class TransformerPlotting:
         plt.close()
         # Transformer Regression 2D Histogram Plot
         plt.figure(figsize=(8,6))
-        plt.hist2d(self.y_true[:,1], self.y_pred[:,1], bins=250, range=[[0, 4], [0, 4]], cmap='viridis', cmin=1)
-        plt.plot([0, 4], [0, 4], color='red', linestyle='--', linewidth=1)
-        plt.xlabel('Expected HT [TeV]')
-        plt.ylabel('Predicted HT [TeV]')
+        plt.hist2d(self.y_true[:,1], self.y_pred[:,1], bins=250, range=[[0, 4e3], [0, 4e3]], cmap='viridis', cmin=1)
+        plt.plot([0, 4e3], [0, 4e3], color='red', linestyle='--', linewidth=1)
+        plt.xlabel('Expected HT [GeV]')
+        plt.ylabel('Predicted HT [GeV]')
         plt.title('2D Histogram: Expected vs Predicted HT')
         plt.colorbar(label='Counts')
         plt.savefig('transformer_dual_regression_ht_2d_histogram.png', dpi=300)
@@ -152,8 +174,8 @@ class TransformerPlotting:
         # Transformer Regression Low-binned Plot (Percent per bin)
         fig, ax = plt.subplots(figsize=(10, 6))
         bins = 5
-        x_range = (0.5, 3)
-        y_range = (0.5, 3)
+        x_range = (0.5e3, 3e3)
+        y_range = (0.5e3, 3e3)
         # 2D histogram -> percentages
         H, xedges, yedges = np.histogram2d(self.y_true[:,0], self.y_pred[:,0], bins=bins, range=[x_range, y_range])
         total = H.sum()
@@ -174,8 +196,8 @@ class TransformerPlotting:
                 ax.text(xc, yc, f"{val:.1f}%", ha='center', va='center',
                         fontsize=12, fontweight='bold', color=txt_color)
         ax.set_xlim(x_range); ax.set_ylim(y_range)
-        ax.set_xlabel('Expected Invariant Mass [TeV]')
-        ax.set_ylabel('Predicted Invariant Mass [TeV]')
+        ax.set_xlabel('Expected Invariant Mass [GeV]')
+        ax.set_ylabel('Predicted Invariant Mass [GeV]')
         ax.set_title('Binned plot: Expected vs Predicted Invariant Mass (Percent per bin)')
         cbar = fig.colorbar(pcm, ax=ax)
         cbar.set_label('Percentage of events (%)')
@@ -189,8 +211,8 @@ class TransformerPlotting:
         # Transformer Regression Low-binned Plot (Percent per bin)
         fig, ax = plt.subplots(figsize=(10, 6))
         bins = 4
-        x_range = (0, 2)
-        y_range = (0, 2)
+        x_range = (0, 2e3)
+        y_range = (0, 2e3)
         # 2D histogram -> percentages
         H, xedges, yedges = np.histogram2d(self.y_true[:,1], self.y_pred[:,1], bins=bins, range=[x_range, y_range])
         total = H.sum()
@@ -211,8 +233,8 @@ class TransformerPlotting:
                 ax.text(xc, yc, f"{val:.1f}%", ha='center', va='center',
                         fontsize=12, fontweight='bold', color=txt_color)
         ax.set_xlim(x_range); ax.set_ylim(y_range)
-        ax.set_xlabel('Expected HT Mass [TeV]')
-        ax.set_ylabel('Predicted HT Mass [TeV]')
+        ax.set_xlabel('Expected HT Mass [GeV]')
+        ax.set_ylabel('Predicted HT Mass [GeV]')
         ax.set_title('Binned plot: Expected vs Predicted HT Mass (Percent per bin)')
         cbar = fig.colorbar(pcm, ax=ax)
         cbar.set_label('Percentage of events (%)')
