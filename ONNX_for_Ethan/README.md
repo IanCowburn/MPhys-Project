@@ -22,15 +22,15 @@ Only consider events with up to two (charged) leptons and up to 12 jets.
 
 ##### 2 Lepton tokens:
 
-(Eta, Phi, Pt, E, Lepton charge, B-jet tagging (i.e. 0))
+    (Eta, Phi, Pt, E, Lepton charge, B-jet tagging (i.e. 0))
 
 ##### 12 Jet tokens:
 
-(Eta, Phi, Pt, E, Lepton charge (i.e. 0), B-jet tagging)
+    (Eta, Phi, Pt, E, Lepton charge (i.e. 0), B-jet tagging)
 
 ##### 1 MET token:
 
-(Eta (i.e. 0), MET Phi, MET MET, E (i.e. 0), Lepton charge (i.e. 0), B-jet tagging (i.e. 0))
+    (Eta (i.e. 0), MET Phi, MET MET, E (i.e. 0), Lepton charge (i.e. 0), B-jet tagging (i.e. 0))
 
 ### 3. Pad the arrays and assemble the tensor
 
