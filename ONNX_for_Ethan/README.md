@@ -40,7 +40,7 @@ Pad all the other missing values with -99 (and remember the padding for each eve
 
 Assemble the data by concatenating lepton and jet arrays. This means you just combine all the first four features and then for the remaining two add the zeros for the leptons for b-tagging and the zeros for jets for charge, something like this:
 
-data_array = np.concatenate([
+        data_array = np.concatenate([
             lepton_arrays[:4, :, :],  # eta, phi, pt, e for leptons
             jet_arrays[:4, :, :]      # eta, phi, pt, e for jets
         ], axis=2)
