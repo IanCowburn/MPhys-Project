@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset
 class TransformerScaling:
     def __init__(self, X, pad_mask_np, y,
                  lepton_mask_size, jet_mask_size,
-                 in_features_leptons, in_features_jets):
+                 in_features_leptons, in_features_jets, in_features_met, in_features_numbers, in_features_ht):
         self.X = X
         self.pad_mask_np = pad_mask_np
         self.y = y
@@ -17,6 +17,9 @@ class TransformerScaling:
         self.jet_mask_size = jet_mask_size
         self.in_features_leptons = in_features_leptons
         self.in_features_jets = in_features_jets
+        self.in_features_met = in_features_met
+        self.in_features_numbers = in_features_numbers
+        self.in_features_ht = in_features_ht
     def scale_y(self, y_train, y_valid, y_test):
         # Try log transformation instead of just StandardScaler
         
@@ -53,57 +56,71 @@ class TransformerScaling:
                 y_train, y_valid, y_test,
                 mask_train, mask_valid, mask_test,
                 valid_train, valid_valid, valid_test)
-    def scale_X(self, X_tensor, valid_tokens_tensor, scaler):
-        X = X_tensor.numpy()
-        valid_tokens = valid_tokens_tensor.numpy()
-        E, T, F = X.shape
-        
-        # Split features: scale eta, phi, pt, e (0-3), keep charge and btag as-is (4-5)
-        X_for_scaling = X[:, :, :4]  # (E, T, 4) - kinematic features
-        non_scaled_X = X[:, :, 4:]   # (E, T, 2) - charge, btag
-        
-        # Flatten only for scaling (preserve token structure)
-        X_flat = X_for_scaling.reshape(-1, 4)  # (E*T, 4)
-        valid_rows = valid_tokens.reshape(-1)  # (E*T,)
-        
-        # Scale valid entries, keep -99 for padded
-        X_flat_scaled = np.full_like(X_flat, -99.0, dtype=np.float32)
-        X_flat_scaled[valid_rows] = scaler.transform(X_flat[valid_rows])
-        
-        X_scaled_reshaped = X_flat_scaled.reshape(E, T, 4)
-        
-        # Concatenate along feature dimension
-        X_final = np.concatenate([X_scaled_reshaped, non_scaled_X], axis=2)  # (E, T, 6)
-        
-        return torch.from_numpy(X_final).float()
+
+    def scale_X(self, X_tensor, pad_mask_tensor, scalers):
+        X = X_tensor.numpy().copy()
+        pad_mask = pad_mask_tensor.numpy()
+
+        lepton_slice = slice(0, self.lepton_mask_size)
+        jet_slice = slice(self.lepton_mask_size, self.lepton_mask_size + self.jet_mask_size)
+        met_idx = self.lepton_mask_size + self.jet_mask_size
+        numbers_idx = met_idx + 1
+        ht_idx = numbers_idx + 1
+
+        # Leptons and jets: scale kinematics (eta, phi, pt, e), keep feature 4 unchanged
+        for token_slice in (lepton_slice, jet_slice):
+            group = X[:, token_slice, :4]
+            valid_rows = (~pad_mask[:, token_slice]).reshape(-1)
+            flat_group = group.reshape(-1, 4)
+            if np.any(valid_rows):
+                flat_group[valid_rows] = scalers["lepjet"].transform(flat_group[valid_rows])
+            X[:, token_slice, :4] = flat_group.reshape(group.shape)
+
+        # MET token: scale first 4 channels
+        X[:, met_idx, :4] = scalers["met"].transform(X[:, met_idx, :4])
+
+        # Numbers token: scale all 5 channels
+        X[:, numbers_idx, :5] = scalers["numbers"].transform(X[:, numbers_idx, :5])
+
+        # HT token: scale first 3 channels
+        X[:, ht_idx, :3] = scalers["ht"].transform(X[:, ht_idx, :3])
+
+        return torch.from_numpy(X.astype(np.float32)).float()
     def __call__(self):
         (X_train, X_valid, X_test,
          y_train, y_valid, y_test,
          mask_train, mask_valid, mask_test,
          valid_train, valid_valid, valid_test) = self.prepare_data(self.X, self.y, self.pad_mask_np)
         y_train, y_valid, y_test, scaler_y = self.scale_y(y_train, y_valid, y_test)
-        
-        X_train_np = X_train.numpy()
-        valid_train_np = valid_train.numpy()
-        X_train_flat = X_train_np.reshape(-1, X_train_np.shape[2])
-        scalerX= StandardScaler()
 
-        E, T, F = X_train_np.shape
-        X_train_for_scaling = X_train_np[:, :, :4]  # (E, T, 4) - eta, phi, pt, e
-        non_scaled_X_train = X_train_np[:, :, 4:]   # (E, T, 2) - charge, btag
-        
-        X_train_flat = X_train_for_scaling.reshape(-1, 4)  # (E*T, 4)
-        X_train_flat_scaled = np.full_like(X_train_flat, -99.0, dtype=np.float32) # (E*T, 4)
-        valid_train_flat = valid_train_np.reshape(-1) # (E*T,)
-        scalerX.fit(X_train_flat[valid_train_flat])
-        X_train_flat_scaled[valid_train_flat] = scalerX.transform(X_train_flat[valid_train_flat])
+        X_train_np = X_train.numpy().copy()
+        mask_train_np = mask_train.numpy()
 
-        X_train_scaled_reshaped = X_train_flat_scaled.reshape(E, T, 4)
-        X_train_final = np.concatenate([X_train_scaled_reshaped, non_scaled_X_train], axis=2)  # (E, T, 6)
-        X_train = torch.from_numpy(X_train_final).float()
-        
-        X_valid = self.scale_X(X_valid, valid_valid, scalerX)
-        X_test  = self.scale_X(X_test,  valid_test,  scalerX)
+        lepton_slice = slice(0, self.lepton_mask_size)
+        jet_slice = slice(self.lepton_mask_size, self.lepton_mask_size + self.jet_mask_size)
+        met_idx = self.lepton_mask_size + self.jet_mask_size
+        numbers_idx = met_idx + 1
+        ht_idx = numbers_idx + 1
+
+        lep_kin_flat = X_train_np[:, lepton_slice, :4].reshape(-1, 4)
+        jet_kin_flat = X_train_np[:, jet_slice, :4].reshape(-1, 4)
+        lep_valid_flat = (~mask_train_np[:, lepton_slice]).reshape(-1)
+        jet_valid_flat = (~mask_train_np[:, jet_slice]).reshape(-1)
+        lepjet_fit_data = np.concatenate([
+            lep_kin_flat[lep_valid_flat],
+            jet_kin_flat[jet_valid_flat]
+        ], axis=0)
+
+        scalers = {
+            "lepjet": StandardScaler().fit(lepjet_fit_data),
+            "met": StandardScaler().fit(X_train_np[:, met_idx, :4]),
+            "numbers": StandardScaler().fit(X_train_np[:, numbers_idx, :5]),
+            "ht": StandardScaler().fit(X_train_np[:, ht_idx, :3])
+        }
+
+        X_train = self.scale_X(X_train, mask_train, scalers)
+        X_valid = self.scale_X(X_valid, mask_valid, scalers)
+        X_test = self.scale_X(X_test, mask_test, scalers)
         print(f"Training set:   {X_train.shape[0]} events")
         print(f"Validation set: {X_valid.shape[0]} events")
         print(f"Test set:       {X_test.shape[0]} events")
@@ -116,6 +133,7 @@ class TransformerTraining:
     def __init__(self,
                  lepton_mask_size, jet_mask_size,
                  in_features_leptons, in_features_jets,
+                 in_features_met, in_features_numbers, in_features_ht,
                  X_train, X_valid, X_test,
                  mask_train, mask_valid, mask_test,
                  y_train, y_valid, y_test,
@@ -125,6 +143,9 @@ class TransformerTraining:
         self.jet_mask_size = jet_mask_size
         self.in_features_leptons = in_features_leptons
         self.in_features_jets = in_features_jets
+        self.in_features_met = in_features_met
+        self.in_features_numbers = in_features_numbers
+        self.in_features_ht = in_features_ht
         self.X_train = X_train
         self.X_valid = X_valid
         self.X_test = X_test
@@ -163,15 +184,21 @@ class TransformerTraining:
             self.lepton_mask_size,
             self.jet_mask_size,
             self.in_features_leptons,
-            self.in_features_jets
+            self.in_features_jets,
+            self.in_features_met,
+            self.in_features_numbers,
+            self.in_features_ht
         ).to(device)
         return model
     
     def training_loop(self, model, device, train_loader, valid_loader):
-        early = EarlyStopping(patience=5, min_delta=1e-4)
+        early = EarlyStopping(patience=25, min_delta=1e-4)
         loss_fn = nn.HuberLoss(delta = 100)
+        train_loss_history = []
+        val_loss_history = []
+        optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0 = 25)
         for epoch in range(1, self.epochs + 1):
-            optimizer = torch.optim.AdamW(model.parameters(), lr=4e-4 * (0.95 ** epoch), weight_decay=1e-4)
             model.train()
             train_loss_sum = 0.0
             for xb, yb, mb in train_loader:
@@ -193,19 +220,22 @@ class TransformerTraining:
                     val_loss_sum += loss.item() * xb.size(0)
             val_loss = val_loss_sum / len(valid_loader.dataset)
             print(f"Epoch {epoch}/{self.epochs}  Train {train_loss:.4f}  Val {val_loss:.4f}")
+            train_loss_history.append(train_loss)
+            val_loss_history.append(val_loss)
+            scheduler.step()
             early(val_loss)
             if early.early_stop:
                 print("Early stopping")
                 break
-        return model
+        return model, train_loss_history, val_loss_history
     def __call__(self):
         self.training_prints()
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print("Device:", device)
         train_loader, valid_loader, test_loader = self.build_loaders()
         model = self.init_model(device)
-        model = self.training_loop(model, device, train_loader, valid_loader)
-        return model, test_loader, device
+        model, train_loss_history, val_loss_history = self.training_loop(model, device, train_loader, valid_loader)
+        return model, test_loader, device, train_loss_history, val_loss_history
 
 class EarlyStopping:
     def __init__(self, patience=10, min_delta=0.0):

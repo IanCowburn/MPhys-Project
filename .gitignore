@@ -1,0 +1,27 @@
+# OS/editor
+.DS_Store
+Thumbs.db
+
+# Python cache/env
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Large HEP data files
+*.root
+*.h5
+*.hdf5
+
+# NumPy/cache artifacts
+*.npy
+*.npz
+
+# Model and binary artifacts
+*.onnx
+*.pkl
+
+# Notebook checkpoints
+.ipynb_checkpoints/

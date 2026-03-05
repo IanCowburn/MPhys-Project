@@ -6,10 +6,16 @@ import vector
 import numpy as np
 import os
 # Data files
-files = ["scratch/tttt_NLO_523243_mc23a_fullsim.root",
-         "scratch/tttt_NLO_523243_mc23d_fullsim.root",
-         "scratch/tttt_NLO_523243_mc23e_fullsim.root"]
-var_names = ["lepton_eta", "lepton_phi", "jet_eta", "jet_phi", "lepton_pt_NOSYS", "jet_pt_NOSYS", "lepton_e_NOSYS", "jet_e_NOSYS", "met_met_NOSYS", "met_phi_NOSYS", "jet_GN2v01_FixedCutBEff_77_select", "lepton_charge"]
+files = ["tttt_NLO_523243_mc23a_fullsim.root",
+         "tttt_NLO_523243_mc23d_fullsim.root",
+         "tttt_NLO_523243_mc23e_fullsim.root"]
+         
+var_names = ["lepton_eta", "lepton_phi", "lepton_pt_NOSYS", "lepton_e_NOSYS", "lepton_charge",
+             "jet_eta", "jet_phi", "jet_pt_NOSYS", "jet_e_NOSYS", "jet_GN2v01_FixedCutBEff_77_select",
+             "met_met_NOSYS", "met_phi_NOSYS", "met_significance_NOSYS", "met_sumet_NOSYS",
+             "nJets", "nFJets", "nBjets_GN2v01_77WP", "nElectrons", "nMuons",
+             "HT_all_NOSYS", "HT_jets_NOSYS", "HT_fjets_NOSYS"]
+
 class TransformerDataLoader:
     def __init__(self, files, var_names, lepton_mask_size, jet_mask_size):
         """
@@ -80,7 +86,6 @@ class TransformerDataLoader:
                 combined_parton_system (vector.Array): Combined parton system from the 4-momenta.
         """
             
-        padding_size = []
         masking_array = tree.arrays(["jet_eta", "lepton_eta"])
         nLeptons_mask = ak.num(masking_array["lepton_eta"]) <= self.lepton_mask_size
         nJets_mask = ak.num(masking_array["jet_eta"]) <= self.jet_mask_size
@@ -89,23 +94,18 @@ class TransformerDataLoader:
         combined_parton_system = parton_vectors[:,0] + parton_vectors[:,1] + parton_vectors[:,2] + parton_vectors[:,3]
         parton_pt = parton_pt[nLeptons_mask & nJets_mask]
         parton_ht = ak.sum(parton_pt, axis=1)
+
+        # Deterministic padding by token type to guarantee consistent shapes across features.
         for name in self.var_names:
-            # Skip MET variables - they are event-level scalars, not token arrays
-            if "met" in name:
+            if name.startswith("lepton_"):
+                pad = self.lepton_mask_size
+            elif name.startswith("jet_"):
+                pad = self.jet_mask_size
+            else:
                 continue
-            pad = int(ak.max(ak.num(data_array[name])))
-            padding_size.append(pad)
-        for i in range(len(self.var_names)):
-            name = self.var_names[i]
-            # Skip MET variables
-            if "met" in name:
-                continue
-            pad = padding_size[i - sum(1 for v in self.var_names[:i] if "met" in v)]
-            try:
-                data_array[name] = ak.pad_none(data_array[name], pad, clip=True)
-                data_array[name] = ak.fill_none(data_array[name], -99)
-            except Exception:
-                pass
+
+            data_array[name] = ak.pad_none(data_array[name], pad, clip=True)
+            data_array[name] = ak.fill_none(data_array[name], -99)
         
         return data_array, combined_parton_system, parton_ht
     
@@ -127,69 +127,52 @@ class TransformerDataLoader:
         lepton_arrays = []
         jet_arrays = []
         met_arrays = []
+        numbers_arrays = []
+        ht_arrays = []
         for name in self.var_names:
-            if "lepton" in name:
+            if name.startswith("lepton_"):
                 lepton_arrays.append(data_array[name])
-            elif "jet" in name:
+            elif name.startswith("jet_"):
                 jet_arrays.append(data_array[name])
-            elif "met" in name:
+            elif name.startswith("met_"):
                 met_arrays.append(data_array[name])
+            elif name in ["nJets", "nFJets", "nBjets_GN2v01_77WP", "nElectrons", "nMuons"]:
+                numbers_arrays.append(data_array[name])
+            elif name.startswith("HT_"):
+                ht_arrays.append(data_array[name])
         
-        lepton_arrays = ak.to_numpy(lepton_arrays)  # (5, events, lepton_tokens)
-        jet_arrays = ak.to_numpy(jet_arrays)        # (5, events, jet_tokens)
-        met_arrays = ak.to_numpy(met_arrays)        # (2, events) - event-level scalars
+        # Convert each branch separately to avoid irreducible UnionArray conversion errors.
+        lepton_arrays = np.stack([
+            ak.to_numpy(ak.values_astype(arr, np.float32)) for arr in lepton_arrays
+        ], axis=0)  # (5, events, lepton_tokens)
+        jet_arrays = np.stack([
+            ak.to_numpy(ak.values_astype(arr, np.float32)) for arr in jet_arrays
+        ], axis=0)  # (5, events, jet_tokens)
+        met_arrays = np.stack([
+            ak.to_numpy(ak.values_astype(arr, np.float32)) for arr in met_arrays
+        ], axis=0)  # (4, events)
+        numbers_arrays = np.stack([
+            ak.to_numpy(ak.values_astype(arr, np.float32)) for arr in numbers_arrays
+        ], axis=0)  # (5, events)
+        ht_arrays = np.stack([
+            ak.to_numpy(ak.values_astype(arr, np.float32)) for arr in ht_arrays
+        ], axis=0)  # (3, events)
+
+        met_arrays = np.concatenate([met_arrays, np.zeros((1, met_arrays.shape[1]))], axis=0) # Pad to 5 features
+        ht_arrays = np.concatenate([ht_arrays, np.zeros((2, ht_arrays.shape[1]))], axis=0) # Pad to 5 features
         
-        num_events = lepton_arrays.shape[1]
-        
-        # Concatenate eta, phi, pt, e along token axis: (4, events, total_tokens)
         data_array = np.concatenate([
-            lepton_arrays[:4, :, :],  # eta, phi, pt, e for leptons
-            jet_arrays[:4, :, :]      # eta, phi, pt, e for jets
+            lepton_arrays,
+            jet_arrays,
+            met_arrays[:, :, np.newaxis],
+            numbers_arrays[:, :, np.newaxis],
+            ht_arrays[:, :, np.newaxis]
         ], axis=2)
-        
-        # Add charge feature (leptons have charge, jets have 0)
-        charge_zeros = np.zeros([num_events, self.jet_mask_size])
-        charge_leptons = np.concatenate([lepton_arrays[4, :, :], charge_zeros], axis=1)  # (events, total_tokens)
-        
-        # Add b-jet tag feature (leptons have 0, jets have tagging)
-        bjet_zeros = np.zeros([num_events, self.lepton_mask_size])
-        bjet_tags = np.concatenate([bjet_zeros, jet_arrays[4, :, :]], axis=1)  # (events, total_tokens)
-        
-        # Create MET token: shape (events, 1, 6) with [0, met_phi, met_met, 0, 0, 0]
-        met_token = np.zeros((num_events, 1, 6), dtype=np.float32)
-        met_token[:, 0, 1] = met_arrays[1, :]  # phi = met_phi
-        met_token[:, 0, 2] = met_arrays[0, :]  # pt = met_met
-        
-        # Stack all features for leptons+jets: (6, events, 14)
-        data_array = np.concatenate([
-            data_array,                            # eta, phi, pt, e (4 features)
-            charge_leptons[np.newaxis, :, :],     # charge (1 feature)
-            bjet_tags[np.newaxis, :, :]           # b-jet tag (1 feature)
-        ], axis=0)
-        
-        # Transpose to (events, 14, 6)
+
+        # Transpose to (events, 17, 5)
         data_array = np.transpose(data_array, (1, 2, 0))
         
-        # Append MET token as 15th token: (events, 15, 6)
-        data_array = np.concatenate([data_array, met_token], axis=1)
-        
         return data_array, combined_parton_system, parton_ht
-    
-    def lepton_jet_classifier(self, x):
-        """
-        Creates a classifier array to distinguish between leptons and jets in the data array.
-        Args:
-            x (numpy.ndarray): Input data array with shape (events, tokens, features).
-        
-        Returns:
-            classifier_array (numpy.ndarray): Classifier array with shape (events, tokens),
-            where leptons are labeled as 1 and jets as 2.
-        """
-        events_length = x.shape[0]
-        lepton_classifier_array = np.ones((events_length, self.lepton_mask_size), dtype=np.float32)
-        jet_classifier_array = 2 * np.ones((events_length, self.jet_mask_size), dtype=np.float32)
-        classifer_array = np.concatenate((lepton_classifier_array, jet_classifier_array), axis=1)
-        return classifer_array
     
     def final_masking(self, data_array, combined_parton_system, parton_ht, num_phys_features=4):
         """
@@ -250,10 +233,6 @@ class TransformerDataLoader:
         data_array = np.concatenate(data_array, axis=0)
         combined_parton_system = ak.concatenate(combined_parton_system, axis=0)
         parton_ht = ak.concatenate(parton_ht_list, axis=0)
-        # classifier_array = self.lepton_jet_classifier(data_array)
-        # base_pad_mask = (data_array == -99.0).all(axis=2)
-        # classifier_array[base_pad_mask] = -99.0
-        # data_array = np.concatenate((data_array, classifier_array[:, :, np.newaxis].astype(np.float32)), axis=2)
         X, y, pad_mask_np = self.final_masking(data_array, combined_parton_system, parton_ht, num_phys_features=4)
         np.save("dual_cache_X.npy", X)
         np.save("dual_cache_y.npy", y)

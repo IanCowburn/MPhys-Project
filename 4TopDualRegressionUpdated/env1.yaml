@@ -1,0 +1,19 @@
+name: env1
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy=1.26.*
+  - matplotlib=3.9.*
+  - scikit-learn=1.5.*
+  - pytorch=2.3.*
+  - pytorch-cuda=12.1  # CUDA 12.1 toolkit from NVIDIA channel
+  - pip
+  - pip:
+      - uproot==5.*
+      - awkward==2.*
+      - vector==1.*
+

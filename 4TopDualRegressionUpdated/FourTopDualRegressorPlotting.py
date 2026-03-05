@@ -5,7 +5,7 @@ from matplotlib import gridspec
 from scipy.stats import pearsonr
 
 class TransformerPlotting:
-    def __init__(self, y_true, y_pred, invariant_mass_corr, invariant_mass_rmse, invariant_mass_difference, ht_corr, ht_rmse, ht_difference, invariant_mass_biased, ht_biased, embedder_output):
+    def __init__(self, y_true, y_pred, invariant_mass_corr, invariant_mass_rmse, invariant_mass_difference, ht_corr, ht_rmse, ht_difference, invariant_mass_biased, ht_biased, embedder_output, train_loss_history, val_loss_history):
         self.invariant_mass_difference = invariant_mass_difference
         self.ht_difference = ht_difference
         self.invariant_mass_biased = invariant_mass_biased
@@ -17,6 +17,27 @@ class TransformerPlotting:
         self.ht_rmse = ht_rmse
         self.invariant_mass_corr = invariant_mass_corr
         self.ht_corr = ht_corr
+        self.train_loss_history = train_loss_history
+        self.val_loss_history = val_loss_history
+
+    def plot_loss_curves(self, outpath='Transformer_training_validation_loss.png'):
+        if self.train_loss_history is None or self.val_loss_history is None:
+            return
+        if len(self.train_loss_history) == 0 or len(self.val_loss_history) == 0:
+            return
+        with plt.rc_context({'font.size': 16}):
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(self.train_loss_history, label='Train Loss', color='blue', linewidth=2)
+            ax.plot(self.val_loss_history, label='Validation Loss', color='orange', linewidth=2)
+            ax.set_xlabel('Epoch')
+            ax.set_ylabel('Loss')
+            ax.set_title('Training and Validation Loss Curves')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            fig.savefig(outpath, dpi=300, bbox_inches='tight')
+            plt.show()
+            plt.close(fig)
+
     
     def plot_all(self):
         # In GeV:
@@ -312,3 +333,6 @@ class TransformerPlotting:
             fig.savefig('Transformer_mass_ht_binned_plot_percent.png', dpi=300, bbox_inches='tight')
             plt.show()
             plt.close(fig)
+
+        # --- Training and Validation Loss Curves ---
+        self.plot_loss_curves()
