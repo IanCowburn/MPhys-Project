@@ -20,7 +20,6 @@ venv/
 *.npz
 
 # Model and binary artifacts
-*.onnx
 *.pkl
 
 # Notebook checkpoints
